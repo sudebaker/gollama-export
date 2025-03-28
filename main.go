@@ -26,14 +26,7 @@ import (
 var (
 	ollamaBaseDir = flag.String("ollama-dir", "/var/lib/ollama", "Directorio base de ollama")
 	outputDir     = flag.String("output-dir", "./ollama-export", "Directorio de salida para la exportación")
-	debug         = flag.Bool("debug", false, "Activar mensajes de depuración")
 )
-
-func debugPrint(msg string) {
-	if *debug {
-		fmt.Println("[DEBUG]", msg)
-	}
-}
 
 func errorExit(msg string) {
 	fmt.Println("ERROR:", msg)
