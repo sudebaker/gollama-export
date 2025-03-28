@@ -11,12 +11,9 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
-	// "encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	// "net/http"
-	// "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,8 +21,9 @@ import (
 )
 
 var (
-	ollamaBaseDir = flag.String("ollama-dir", "/var/lib/ollama", "Directorio base de ollama")
-	outputDir     = flag.String("output-dir", "./ollama-export", "Directorio de salida para la exportación")
+	ollamaBaseDir = flag.String("o", "/var/lib/ollama", "Ollama models directory")
+	outputDir     = flag.String("d", "./ollama-export", "Destination directory for exported models")
+	modelToExport = flag.String("m", "", "Model to export (optional, if not specified, all models will be exported)")
 )
 
 func errorExit(msg string) {
@@ -58,41 +56,6 @@ func getOllamaModels() ([]string, error) {
 	}
 	return models, nil
 }
-
-// // Respuesta de la API para listar modelos
-// type OllamaTagsResponse struct {
-// 	Models []struct {
-// 		Name       string    `json:"name"`
-// 		ModifiedAt string    `json:"modified_at"`
-// 		Size       int64     `json:"size"`
-// 		Digest     string    `json:"digest"`
-// 		Details    struct{} `json:"details"`
-// 	} `json:"models"`
-// }
-
-// func getOllamaModelsFromAPI(url *url.URL) ([]string, error) {
-// 	resp, err := http.Get("http://localhost:11434/api/tags")
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer resp.Body.Close()
-
-// 	if resp.StatusCode != http.StatusOK {
-// 		return nil, fmt.Errorf("API request failed with status code: %d", resp.StatusCode)
-// 	}
-
-// 	var response OllamaTagsResponse
-// 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-// 		return nil, err
-// 	}
-
-// 	var models []string
-// 	for _, model := range response.Models {
-// 		models = append(models, model.Name)
-// 	}
-
-// 	return models, nil
-// }
 
 func createTarGz(source, target string) error {
 	tarfile, err := os.Create(target)
@@ -144,48 +107,46 @@ func createTarGz(source, target string) error {
 }
 
 func main() {
-
 	flag.Parse()
-	// if no arguments are provided, export all models to defaults directories
-	if flag.NArg() == 0 {
-		models, err := getOllamaModels()
-		if err != nil {
-			errorExit(err.Error())
-		}
 
-		for _, model := range models {
-			//modelName := strings.Split(model, ":")[0] // No longer needed, model name is already clean
-			modelName := model
-			modelDir := filepath.Join(*ollamaBaseDir, modelName)
-			destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", modelName))
-
-			if _, err := os.Stat(modelDir); os.IsNotExist(err) {
-				errorExit(fmt.Sprintf("Model %s does not exist in %s", modelName, *ollamaBaseDir))
-			}
-
-			if err := os.MkdirAll(*outputDir, 0755); err != nil {
-				errorExit(fmt.Sprintf("Failed to create output directory: %v", err))
-			}
-
-			if err := createTarGz(modelDir, destFile); err != nil {
-				errorExit(fmt.Sprintf("Failed to create tar.gz file: %v", err))
-			}
-		}
-		fmt.Println("All models exported successfully.")
-		return
-	}
-	// if arguments are provided, export the specified model
-	modelName := flag.Arg(0)
-	modelDir := filepath.Join(*ollamaBaseDir, modelName)
-	destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", modelName))
-	if _, err := os.Stat(modelDir); os.IsNotExist(err) {
-		errorExit(fmt.Sprintf("Model %s does not exist in %s", modelName, *ollamaBaseDir))
-	}
+	// Check if the output directory exists and create it if it doesn't
 	if err := os.MkdirAll(*outputDir, 0755); err != nil {
 		errorExit(fmt.Sprintf("Failed to create output directory: %v", err))
 	}
-	if err := createTarGz(modelDir, destFile); err != nil {
-		errorExit(fmt.Sprintf("Failed to create tar.gz file: %v", err))
+
+	// Export a specific model
+	if *modelToExport != "" {
+		modelDir := filepath.Join(*ollamaBaseDir, *modelToExport)
+		destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", *modelToExport))
+
+		if _, err := os.Stat(modelDir); os.IsNotExist(err) {
+			errorExit(fmt.Sprintf("Model %s does not exist in %s", *modelToExport, *ollamaBaseDir))
+		}
+
+		if err := createTarGz(modelDir, destFile); err != nil {
+			errorExit(fmt.Sprintf("Failed to create tar.gz file: %v", err))
+		}
+		fmt.Printf("Model %s exported successfully to %s\n", *modelToExport, destFile)
+		return
 	}
-	fmt.Printf("Model %s exported successfully to %s\n", modelName, destFile)
+
+	// Export all models
+	models, err := getOllamaModels()
+	if err != nil {
+		errorExit(err.Error())
+	}
+
+	for _, model := range models {
+		modelDir := filepath.Join(*ollamaBaseDir, model)
+		destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", model))
+
+		if _, err := os.Stat(modelDir); os.IsNotExist(err) {
+			errorExit(fmt.Sprintf("Model %s does not exist in %s", model, *ollamaBaseDir))
+		}
+
+		if err := createTarGz(modelDir, destFile); err != nil {
+			errorExit(fmt.Sprintf("Failed to create tar.gz file: %v", err))
+		}
+	}
+	fmt.Println("All models exported successfully.")
 }
