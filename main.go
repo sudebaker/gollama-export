@@ -57,6 +57,30 @@ func getOllamaModels() ([]string, error) {
 	return models, nil
 }
 
+func findModelDirectory(baseDir, modelName string) (string, error) {
+	var foundDir string
+	err := filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() && strings.Contains(path, modelName) {
+			foundDir = path
+			return filepath.SkipDir // Stop searching further
+		}
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if foundDir == "" {
+		return "", fmt.Errorf("model directory not found for %s", modelName)
+	}
+
+	return foundDir, nil
+}
+
 func createTarGz(source, target string) error {
 	tarfile, err := os.Create(target)
 	if err != nil {
@@ -116,12 +140,12 @@ func main() {
 
 	// Export a specific model
 	if *modelToExport != "" {
-		modelDir := filepath.Join(*ollamaBaseDir, *modelToExport)
-		destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", *modelToExport))
-
-		if _, err := os.Stat(modelDir); os.IsNotExist(err) {
-			errorExit(fmt.Sprintf("Model %s does not exist in %s", *modelToExport, *ollamaBaseDir))
+		modelDir, err := findModelDirectory(*ollamaBaseDir, *modelToExport)
+		if err != nil {
+			errorExit(fmt.Sprintf("Error finding model directory: %v", err))
 		}
+
+		destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", *modelToExport))
 
 		if err := createTarGz(modelDir, destFile); err != nil {
 			errorExit(fmt.Sprintf("Failed to create tar.gz file: %v", err))
@@ -137,12 +161,12 @@ func main() {
 	}
 
 	for _, model := range models {
-		modelDir := filepath.Join(*ollamaBaseDir, model)
-		destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", model))
-
-		if _, err := os.Stat(modelDir); os.IsNotExist(err) {
-			errorExit(fmt.Sprintf("Model %s does not exist in %s", model, *ollamaBaseDir))
+		modelDir, err := findModelDirectory(*ollamaBaseDir, model)
+		if err != nil {
+			errorExit(fmt.Sprintf("Error finding model directory: %v", err))
 		}
+
+		destFile := filepath.Join(*outputDir, fmt.Sprintf("%s.tar.gz", model))
 
 		if err := createTarGz(modelDir, destFile); err != nil {
 			errorExit(fmt.Sprintf("Failed to create tar.gz file: %v", err))
