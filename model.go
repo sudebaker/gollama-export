@@ -9,10 +9,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
-
-	
-	"github.com/schollz/progressbar/v3"
 )
 
 // processModel handles the export of a single model
@@ -71,15 +67,11 @@ func (a *App) processModel(modelFull string) {
 		}
 	}
 
-	fmt.Printf("Processing model: %s, tag: %s\n", modelName, modelTag)
-
 	// Check if the model directory exists
 	if _, err := os.Stat(modelDir); os.IsNotExist(err) {
 		fmt.Printf("ERROR: Model %s does not exist in %s\n", modelName, modelDir)
 		return
 	}
-
-	debugPrint(fmt.Sprintf("Model directory found: %s", modelDir), a.Debug)
 
 	// Check if the manifest file exists for the specific tag
 	if _, err := os.Stat(filepath.Join(modelDir, modelTag)); os.IsNotExist(err) {
@@ -92,8 +84,6 @@ func (a *App) processModel(modelFull string) {
 		return
 	}
 
-	debugPrint(fmt.Sprintf("Manifest found: %s", filepath.Join(modelDir, modelTag)), a.Debug)
-
 	// Create destination directory for the model
 	modelNameDest := strings.ReplaceAll(modelName, ":", "/")
 	if err := os.MkdirAll(filepath.Join(a.OutputDir, "models/manifests/registry.ollama.ai/library/", modelNameDest), 0755); err != nil {
@@ -101,14 +91,12 @@ func (a *App) processModel(modelFull string) {
 	}
 
 	// Copy the model-specific manifest
-	fmt.Printf("  Copying manifest for %s:%s\n", modelName, modelTag)
 	if err := copyFile(filepath.Join(modelDir, modelTag), filepath.Join(a.OutputDir, "models/manifests/registry.ollama.ai/library/", modelNameDest, modelTag)); err != nil {
 		fmt.Println("ERROR: Failed to copy manifest.")
 		return
 	}
 
 	// Extract all SHA256 hashes from the manifest
-	fmt.Printf("  Identifying required blobs for %s:%s\n", modelName, modelTag)
 	manifestContent, err := os.ReadFile(filepath.Join(modelDir, modelTag))
 	if err != nil {
 		fmt.Println("ERROR: Failed to read manifest file.")
@@ -131,24 +119,8 @@ func (a *App) processModel(modelFull string) {
 	blobs = unique(blobs)
 
 	// Copy required blobs
-	blobCount := len(blobs)
-
 	copiedCount := 0
 	failedCount := 0
-
-	bar := progressbar.NewOptions(blobCount,
-		progressbar.OptionSetDescription(fmt.Sprintf("Copying blobs for %s:%s", modelName, modelTag)),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}),
-		progressbar.OptionSetPredictTime(false),
-		progressbar.OptionSetItsString("blob"),
-		progressbar.OptionThrottle(65*time.Millisecond),
-	)
 
 	for _, blob := range blobs {
 		blobPath := filepath.Join(a.OllamaBaseDir, "blobs/sha256-"+blob)
@@ -161,17 +133,13 @@ func (a *App) processModel(modelFull string) {
 			if err := copyFile(blobPath, destPath); err == nil {
 				copiedCount++
 			} else {
-				fmt.Printf("    ERROR: Failed to copy blob sha256-%s\n", blob)
 				failedCount++
 			}
 		} else {
-			fmt.Printf("    ERROR: Blob sha256-%s not found\n", blob)
 			failedCount++
 		}
-		bar.Add(1)
 	}
-	bar.Finish()
-	fmt.Printf("  Copied %d blobs, failed to copy %d blobs\n", copiedCount, failedCount)
+	fmt.Printf("  Copied %d blobs, failed to copy %d blobs for %s:%s\n", copiedCount, failedCount, modelName, modelTag)
 	if failedCount > 0 {
 		fmt.Println("  WARNING: Some blobs were not copied successfully.")
 	}
