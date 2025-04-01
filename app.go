@@ -4,9 +4,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
-	"os/exec"
 )
 
 // App struct to hold application state
@@ -49,13 +49,9 @@ func (a *App) Run() {
 
 	// Determine models to export
 	var modelsToExport []string
-	if len(os.Args) > 0 {
-		for _, arg := range os.Args {
-			if !strings.HasPrefix(arg, "-") && arg != os.Args[0] {
-				modelsToExport = append(modelsToExport, arg)
-			}
-		}
-		fmt.Printf("Exporting specified models: %s\n", strings.Join(modelsToExport, " "))
+	if *modelName != "" { // Si se especifica un modelo con la bandera -m
+		modelsToExport = append(modelsToExport, *modelName)
+		fmt.Printf("Exporting specified model: %s\n", *modelName)
 	} else {
 		fmt.Println("Exporting all available models in ollama:")
 		var err error
@@ -85,15 +81,21 @@ func (a *App) Run() {
 
 	// Compress the export
 	fmt.Println("Compressing export...")
-	cmd := exec.Command("tar", "-czvf", "ollama-export.tar.gz", "-C", a.OutputDir, ".")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
+	outputFileName := "ollama-export.tar.gz"
+	if *modelName != "" {
+		outputFileName = fmt.Sprintf("ollama-export-%s.tar.gz", *modelName)
+	}
+
+	// Asegúrate de que el archivo tar.gz se cree dentro del directorio de salida
+	outputFilePath := filepath.Join(a.OutputDir, outputFileName)
+
+	err := createTarGz(a.OutputDir, outputFilePath)
+	if err != nil {
 		errorExit(fmt.Sprintf("Failed to compress export: %v", err))
 	}
 
 	fmt.Println("===================================================")
-	fmt.Println("Export completed: ollama-export.tar.gz")
+	fmt.Printf("Export completed: %s\n", outputFilePath)
 	fmt.Println("To import on the destination system:")
 	fmt.Println("1. Decompress with: tar -xzvf ollama-export.tar.gz -C /destination/path")
 	fmt.Println("2. Copy the files to the Docker container: docker cp /destination/path/. [ollama-container]:/root/.ollama/")

@@ -19,6 +19,7 @@ var (
 	ollamaBaseDir = flag.String("o", "/var/lib/ollama", "Ollama models directory")
 	outputDir     = flag.String("d", "./ollama-export", "Destination directory for exported models")
 	debug         = flag.Bool("debug", false, "Enable debug messages")
+	modelName     = flag.String("m", "", "Model to export (optional)") // New flag for model selection
 )
 
 func main() {
