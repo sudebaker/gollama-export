@@ -89,8 +89,12 @@ func (a *App) Run() {
 	// Asegúrate de que el archivo tar.gz se cree dentro del directorio de salida
 	outputFilePath := filepath.Join(a.OutputDir, outputFileName)
 
-	err := createTarGz(a.OutputDir, outputFilePath)
-	if err != nil {
+	// Usar el comando tar del sistema operativo
+	cmd := exec.Command("tar", "-czvf", outputFilePath, "-C", a.OutputDir, ".")
+	// Redirigir la salida estándar y de error a /dev/null
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
 		errorExit(fmt.Sprintf("Failed to compress export: %v", err))
 	}
 
