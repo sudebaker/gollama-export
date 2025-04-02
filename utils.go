@@ -2,11 +2,8 @@
 package main
 
 import (
-	//"archive/tar"
-	//"compress/gzip"
 	"fmt"
 	"os/exec"
-	//"path/filepath"
 	"strings"
 )
 
