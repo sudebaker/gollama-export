@@ -1,3 +1,3 @@
-module goexport-ollama
+module gollama-export
 
 go 1.24.1
