@@ -25,3 +25,4 @@ go.work.sum
 .env
 ollama-export/
 ollama-export.tar.gz
+*.tar.gz
