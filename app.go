@@ -8,6 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
+
+	"github.com/briandowns/spinner"
 )
 
 // App struct to hold application state
@@ -119,6 +122,9 @@ func (a *App) Run() {
 
 		cmd = exec.Command("tar", tarArgs...)
 
+		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
+		s.Suffix = " Compressing..."
+		s.Start()
 		// Prefijo de rutas dentro del archivo tar
 		for i := range tarArgs {
 			if strings.Contains(tarArgs[i], "blobs") {
@@ -128,11 +134,12 @@ func (a *App) Run() {
 			}
 		}
 
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		cmd.Stdout = nil
+		cmd.Stderr = nil
 		if err := cmd.Run(); err != nil {
 			errorExit(fmt.Sprintf("Failed to compress export: %v", err))
 		}
+		s.Stop()
 
 		fmt.Println("===================================================")
 		fmt.Printf("Export completed: %s\n", outputFilePath)
