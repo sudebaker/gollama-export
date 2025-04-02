@@ -83,23 +83,30 @@ func (a *App) Run() {
 	fmt.Println("Compressing export...")
 	outputFileName := "ollama-export.tar.gz"
 	if *modelName != "" {
-		outputFileName = fmt.Sprintf("ollama-export-%s.tar.gz", *modelName)
+		// Reemplazar caracteres inválidos en el nombre del archivo
+		safeModelName := strings.ReplaceAll(*modelName, ":", "-")
+		outputFileName = fmt.Sprintf("ollama-export-%s.tar.gz", safeModelName)
 	}
 
-	// Asegúrate de que el archivo tar.gz se cree dentro del directorio de salida
-	outputFilePath := filepath.Join(a.OutputDir, outputFileName)
+	// Crear el archivo tar.gz en el directorio padre de a.OutputDir
+	parentDir := filepath.Dir(a.OutputDir)
+	tempOutputFilePath := filepath.Join(parentDir, outputFileName)
 
-	// Usar el comando tar del sistema operativo
-	cmd := exec.Command("tar", "-czvf", outputFilePath, "-C", a.OutputDir, ".")
-	// Redirigir la salida estándar y de error a /dev/null
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
-		errorExit(fmt.Sprintf("Failed to compress export: %v", err))
+	// Usar el comando tar del sistema operativo para crear el archivo comprimido
+	cmd := exec.Command("tar", "-czvf", tempOutputFilePath, "-C", a.OutputDir, ".")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		errorExit(fmt.Sprintf("Failed to compress export: %v\nOutput: %s", err, string(output)))
+	}
+
+	// Mover el archivo tar.gz al directorio de salida
+	finalOutputFilePath := filepath.Join(a.OutputDir, outputFileName)
+	if err := os.Rename(tempOutputFilePath, finalOutputFilePath); err != nil {
+		errorExit(fmt.Sprintf("Failed to move tar.gz to output directory: %v", err))
 	}
 
 	fmt.Println("===================================================")
-	fmt.Printf("Export completed: %s\n", outputFilePath)
+	fmt.Printf("Export completed: %s\n", finalOutputFilePath)
 	fmt.Println("To import on the destination system:")
 	fmt.Println("1. Decompress with: tar -xzvf ollama-export.tar.gz -C /destination/path")
 	fmt.Println("2. Copy the files to the Docker container: docker cp /destination/path/. [ollama-container]:/root/.ollama/")
