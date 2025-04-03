@@ -146,7 +146,8 @@ func (a *App) Run() {
 		fmt.Println("To import on the destination system:")
 		fmt.Println("1. Decompress with: tar -xzvf ollama-export.tar.gz -C /destination/path")
 		fmt.Println("2. Copy the files to the Docker container: docker cp /destination/path/. [ollama-container]:/root/.ollama/")
-		fmt.Println("3. Restart the container: docker restart [ollama-container]")
+		fmt.Println("3. Register the models in the container(inside the container): echo \"FROM nombremodelo:tag\" > Modelfile")
+		fmt.Println("4. ollama create --model [nombremodelo:tag] --file Modelfile")
 		fmt.Println("===================================================")
 		fmt.Println("Export finished.")
 	}
