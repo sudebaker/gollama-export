@@ -38,9 +38,11 @@ func main() {
 		}
 	}
 
-	// Initialize the application
 	app := NewApp(*ollamaBaseDir, *outputDir, *debug)
-	app.Run()
+
+	// Pass positional arguments to the App
+	args := flag.Args()
+	app.Run(args...)
 }
 
 func debugPrint(msg string, debug bool) {
@@ -55,11 +57,13 @@ func errorExit(msg string) {
 }
 
 func usage() {
-	fmt.Println("Usage: goexport-ollama [OPTIONS] [model1[:tag1] model2[:tag2] ...]")
+	fmt.Println("Usage: goexport-ollama [OPTIONS] [model...]")
 	fmt.Println("  -o, --ollama-dir <directory> : Ollama base directory (default: /var/lib/ollama)")
 	fmt.Println("  -d, --output-dir <directory> : Output directory for export (default: ./ollama-export)")
+	fmt.Println("  -m, --model <model_name>     : Model to export (e.g., 'llama2:latest')")
 	fmt.Println("  -h, --help                   : Show this help message")
 	fmt.Println("  --debug                      : Enable debug messages")
-	fmt.Println("  model1[:tag1] model2[:tag2] ... : List of models to export (if not specified, all are exported)")
+	fmt.Println()
+	fmt.Println("If no model is specified via flag or arguments, all available models will be exported.")
 	os.Exit(0)
 }

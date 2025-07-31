@@ -1,36 +1,43 @@
-// utils.go
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
+	"net/http"
+	"io/ioutil"
 )
 
+type OllamaTagsResponse struct {
+	Models []struct {
+		Name string `json:"name"`
+	} `json:"models"`
+}
+
 func getOllamaModelsWithTags() ([]string, error) {
-	cmd := exec.Command("ollama", "ls")
-	output, err := cmd.CombinedOutput()
+	resp, err := http.Get("http://localhost:11434/api/tags")
 	if err != nil {
-		return nil, fmt.Errorf("error executing ollama ls: %v\nOutput: %s", err, output)
+		return nil, fmt.Errorf("failed to get models from ollama api: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("failed to get models from ollama api: status code %d", resp.StatusCode)
 	}
 
-	lines := strings.Split(string(output), "\n")
-	if len(lines) <= 1 {
-		return nil, fmt.Errorf("no models found with 'ollama ls'")
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %v", err)
 	}
 
-	models := []string{}
-	for _, line := range lines[1:] {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		parts := strings.Split(line, ":")
-		if len(parts) >= 2 {
-			tag := strings.TrimSpace(parts[1])
-			tag = strings.Split(tag, " ")[0]
-			models = append(models, fmt.Sprintf("%s:%s", parts[0], tag))
-		}
+	var tagsResponse OllamaTagsResponse
+	if err := json.Unmarshal(body, &tagsResponse); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal response body: %v", err)
 	}
+
+	var models []string
+	for _, model := range tagsResponse.Models {
+		models = append(models, model.Name)
+	}
+
 	return models, nil
 }

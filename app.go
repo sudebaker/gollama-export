@@ -1,11 +1,12 @@
-// app.go
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,7 +31,7 @@ func NewApp(ollamaBaseDir, outputDir string, debug bool) *App {
 }
 
 // Run executes the main application logic
-func (a *App) Run() {
+func (a *App) Run(models ...string) {
 	// Check if the required directories exist
 	if _, err := os.Stat(filepath.Join(a.OllamaBaseDir, "manifests")); os.IsNotExist(err) {
 		errorExit(fmt.Sprintf("Directory %s/manifests not found", a.OllamaBaseDir))
@@ -44,7 +45,10 @@ func (a *App) Run() {
 
 	// Determine models to export
 	var modelsToExport []string
-	if *modelName != "" { // Si se especifica un modelo con la bandera -m
+	if len(models) > 0 {
+		modelsToExport = models
+		fmt.Printf("Exporting specified models: %s\n", strings.Join(models, " "))
+	} else if *modelName != "" { // Si se especifica un modelo con la bandera -m
 		modelsToExport = append(modelsToExport, *modelName)
 		fmt.Printf("Exporting specified model: %s\n", *modelName)
 	} else {
@@ -61,16 +65,10 @@ func (a *App) Run() {
 	for _, modelFull := range modelsToExport {
 		// Compress the export
 		fmt.Printf("Compressing model: %s\n", modelFull)
-		outputFileName := "ollama-export.tar.gz"
-		// Reemplazar caracteres inválidos en el nombre del archivo
 		safeModelName := strings.ReplaceAll(modelFull, ":", "-")
-		outputFileName = fmt.Sprintf("ollama-export-%s.tar.gz", safeModelName)
-
-		// Ruta completa para el archivo tar.gz
+		outputFileName := fmt.Sprintf("ollama-export-%s.tar.gz", safeModelName)
 		outputFilePath := filepath.Join(a.OutputDir, outputFileName)
 
-		// Crear el archivo tar.gz con los archivos específicos del modelo
-		var cmd *exec.Cmd
 		modelNameParts := strings.Split(modelFull, ":")
 		modelBaseName := modelNameParts[0]
 		modelTag := "latest"
@@ -78,67 +76,46 @@ func (a *App) Run() {
 			modelTag = modelNameParts[1]
 		}
 
-		// Construir la ruta al manifiesto del modelo
 		manifestPath := filepath.Join(a.OllamaBaseDir, "manifests/registry.ollama.ai/library", modelBaseName, modelTag)
 
-		// Leer el archivo de manifiesto
+		if _, err := os.Stat(manifestPath); os.IsNotExist(err) {
+			fmt.Printf("WARNING: Manifest for model '%s' not found, skipping.\n", modelFull)
+			continue
+		}
+
 		manifestFile, err := os.ReadFile(manifestPath)
 		if err != nil {
 			errorExit(fmt.Sprintf("Failed to read manifest file: %v", err))
 		}
 
-		// Analizar el JSON
-		var manifest map[string]interface{}
-		err = json.Unmarshal(manifestFile, &manifest)
-		if err != nil {
+		var manifestData map[string]interface{}
+		if err := json.Unmarshal(manifestFile, &manifestData); err != nil {
 			errorExit(fmt.Sprintf("Failed to unmarshal manifest JSON: %v", err))
 		}
 
-		// Extraer los hashes SHA256 de los blobs
 		var blobHashes []string
-		layers := manifest["layers"].([]interface{})
+		layers := manifestData["layers"].([]interface{})
 		for _, layer := range layers {
 			layerMap := layer.(map[string]interface{})
 			digest := layerMap["digest"].(string)
-			blobHashes = append(blobHashes, strings.Split(digest, ":")[1]) // Remove "sha256:" prefix
+			blobHashes = append(blobHashes, strings.Split(digest, ":")[1])
 		}
 
-		// Construir la lista de archivos a incluir
-		var blobFiles []string
+		var filesToCompress []string
 		for _, hash := range blobHashes {
-			blobFiles = append(blobFiles, filepath.Join(a.OllamaBaseDir, "blobs", "sha256-"+hash))
+			filesToCompress = append(filesToCompress, filepath.Join(a.OllamaBaseDir, "blobs", "sha256-"+hash))
 		}
-
-		// Comando tar para incluir solo los archivos de blob
-		tarArgs := []string{"-czvf", outputFilePath, "-C", a.OllamaBaseDir}
-
-		// Add blobs to tar with correct paths
-		for _, blobFile := range blobFiles {
-			tarArgs = append(tarArgs, blobFile)
-		}
-
-		// Add manifest to tar with correct path
-		tarArgs = append(tarArgs, manifestPath)
-
-		cmd = exec.Command("tar", tarArgs...)
+		filesToCompress = append(filesToCompress, manifestPath)
 
 		s := spinner.New(spinner.CharSets[9], 100*time.Millisecond)
 		s.Suffix = " Compressing..."
 		s.Start()
-		// Prefijo de rutas dentro del archivo tar
-		for i := range tarArgs {
-			if strings.Contains(tarArgs[i], "blobs") {
-				tarArgs[i] = strings.Replace(tarArgs[i], a.OllamaBaseDir+"/", "ollama/", 1)
-			} else if strings.Contains(tarArgs[i], "manifests") {
-				tarArgs[i] = strings.Replace(tarArgs[i], a.OllamaBaseDir+"/", "ollama/", 1)
-			}
+
+		if err := createTarGz(outputFilePath, filesToCompress, a.OllamaBaseDir); err != nil {
+			s.Stop()
+			errorExit(fmt.Sprintf("Failed to create tar.gz archive: %v", err))
 		}
 
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		if err := cmd.Run(); err != nil {
-			errorExit(fmt.Sprintf("Failed to compress export: %v", err))
-		}
 		s.Stop()
 
 		fmt.Println("===================================================")
@@ -151,4 +128,65 @@ func (a *App) Run() {
 		fmt.Println("===================================================")
 		fmt.Println("Export finished.")
 	}
+}
+
+func createTarGz(buf string, files []string, baseDir string) error {
+	// Create output file
+	outFile, err := os.Create(buf)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+
+	// Create new gzip writer
+	gz := gzip.NewWriter(outFile)
+	defer gz.Close()
+
+	// Create new tar writer
+	tw := tar.NewWriter(gz)
+	defer tw.Close()
+
+	// Add files to tar archive
+	for _, file := range files {
+		if err := addFileToTar(tw, file, baseDir); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func addFileToTar(tw *tar.Writer, path string, baseDir string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	// Create header
+	header, err := tar.FileInfoHeader(info, info.Name())
+	if err != nil {
+		return err
+	}
+
+	// Update header name to be relative to baseDir
+	header.Name, err = filepath.Rel(baseDir, path)
+	if err != nil {
+		return err
+	}
+
+	if err := tw.WriteHeader(header); err != nil {
+		return err
+	}
+
+	if _, err := io.Copy(tw, file); err != nil {
+		return err
+	}
+
+	return nil
 }
